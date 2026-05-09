@@ -120,8 +120,11 @@ export default function ECGCanvas({
   zoom             = 1,
   traceThickness   = 1.5,
   showMarkers      = true,
-  precomputedPeaks = null,   // from useSignalMetrics — skips re-detection
-  signalMetrics    = null,   // { hr, pr, qrs, qt, qtc } for bottom strip
+  precomputedPeaks = null,
+  signalMetrics    = null,
+  beatLabels       = null,   // Map<timeOffsetSec, "N"|"V"|"A"|"Art"|"?"> from analysis engine
+  beatColors       = null,   // { N: rgba, V: rgba, A: rgba, Art: rgba }
+  timeOffset       = 0,      // current recording position in seconds — for beat label matching
   error            = null,
 }) {
   const canvasRef = useRef(null);
@@ -247,6 +250,36 @@ export default function ECGCanvas({
     ctx.restore();
   }, [dpr]);
 
+  // ── 7a. Beat background colour tinting ──────────────────────────────────
+  // Draws coloured rectangle tints behind each beat based on beat classification.
+  //   N=green, V=red, A=purple, Art=amber, ?=grey
+  // When beatLabels is null (no analysis engine) this is a no-op.
+  const drawBeatBackgrounds = useCallback((
+    ctx, peaks, startX, topY, rowH_css, pxPerS, timeOff
+  ) => {
+    if (!beatLabels || beatLabels.size === 0 || !beatColors || !peaks?.length) return;
+
+    for (let k = 0; k < peaks.length; k++) {
+      const beatTimeSec = timeOff + peaks[k] / sr;
+      let bestKey = null, bestDist = 0.6;
+      for (const [t, label] of beatLabels) {
+        const dist = Math.abs(t - beatTimeSec);
+        if (dist < bestDist) { bestDist = dist; bestKey = label; }
+      }
+      // Skip normal beats — no background tint (keeps paper clean)
+      if (!bestKey || bestKey === "N") continue;
+
+      const color = beatColors[bestKey] ?? beatColors["?"] ?? "rgba(128,128,128,0.10)";
+      const x0 = Math.max(startX, startX + (peaks[k] / sr) * pxPerS - pxPerS * 0.15);
+      const beatWidth = k + 1 < peaks.length
+        ? (peaks[k + 1] - peaks[k]) / sr * pxPerS
+        : pxPerS * 0.8;
+
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, topY * dpr, Math.min(beatWidth, 300 * dpr), rowH_css * dpr);
+    }
+  }, [beatLabels, beatColors, sr, dpr]);
+
   // ── 7. ECG trace for one lead ──────────────────────────────────────────────
   // Returns { gainMult, baseline, peaks } for use by marker drawing
   const drawTrace = useCallback((ctx, leadName, startX, centerY, availW, rowH_css) => {
@@ -310,7 +343,10 @@ export default function ECGCanvas({
       ? precomputedPeaks
       : detectRPeaks(buf, sr, baseVal);
 
-    return { gainMult, baseline: baseVal, peaks };
+    // peaks_for_bg: use peaks on every lead (not just marker lead) for beat colouring
+    const peaks_for_bg = peaks.length > 0 ? peaks : detectRPeaks(buf, sr, baseVal);
+
+    return { gainMult, baseline: baseVal, peaks, peaks_for_bg };
   }, [leadsMap, sr, dpr, zoom, traceThickness, precomputedPeaks, leadNames, drawBaseline, error]);
 
   // ── 8. Clinical interval markers (R-peaks, RR, PR, QRS) ──────────────────
@@ -569,7 +605,14 @@ export default function ECGCanvas({
       }
 
       const availW = colW - (traceX - cx);
-      const { gainMult, baseline: baseVal, peaks } = drawTrace(ctx, name, traceX, centerY, availW, rowH_css);
+      const { gainMult, baseline: baseVal, peaks, peaks_for_bg } = drawTrace(ctx, name, traceX, centerY, availW, rowH_css);
+
+      // Beat background colour tinting — drawn after trace so it overlays cleanly
+      if (peaks_for_bg && peaks_for_bg.length > 0) {
+        const pxPerS = PX_PER_SEC * dpr * zoom;
+        drawBeatBackgrounds(ctx, peaks_for_bg, traceX,
+          centerY - (rowH / dpr / 2), rowH / dpr, pxPerS, timeOffset);
+      }
 
       // Draw markers on Lead II (or first lead)
       const markerLead = leadNames.includes("II") ? "II" : leadNames[0];
@@ -589,9 +632,10 @@ export default function ECGCanvas({
     drawMetaBar(ctx, W, H, metaH_px * dpr);
   }, [
     dpr, totalH_px, metaH_px, rhythmH_px, nRows, nCols, totalRows, cells,
-    is12Lead, leadNames, showMarkers, leadsMap,
+    is12Lead, leadNames, showMarkers, leadsMap, zoom, timeOffset,
     drawGrid, drawRowSeparators, drawColSep, drawLabel, drawCalPulse,
     drawBaseline, drawTrace, drawMarkers, drawRhythmStrip, drawMetaBar,
+    drawBeatBackgrounds,
   ]);
 
   useEffect(() => { render(); }, [render]);

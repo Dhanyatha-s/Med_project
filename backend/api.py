@@ -1,23 +1,4 @@
 """
-api.py
-Flask REST API — slices .h5 ECG data and serves it to the React frontend.
-
-Endpoints
-─────────
-GET  /api/patients                              list all patients
-GET  /api/patients/<id>                         single patient record
-GET  /api/ecg/<patient_id>/<leads>              slice one lead
-     ?lead=II&start=0&duration=10
-GET  /api/ecg/<patient_id>/<leads>/all          all leads for window
-     ?start=0&duration=10
-GET  /health
-
-Run:
-    pip install flask flask-cors h5py numpy
-    python api.py
-"""
-
-"""
 api.py  —  Holter ECG REST API  (v7 compatible — dynamic lead detection)
 """
 
@@ -270,6 +251,109 @@ def get_single_lead_legacy(patient_id, n_leads):
     s, e  = int(start * sr), min(int(start * sr) + int(duration * sr), total)
     return jsonify({"lead": lead, "sr": sr, "start": start,
                     "samples": fh["ecg"][s:e, col].tolist()})
+
+# ── PATCH /api/patients/<id>  (add PATCH method for inline edit) ──────────────
+
+@app.route("/api/patients/<patient_id>", methods=["GET", "PATCH"])
+def patient_detail(patient_id):
+    """
+    GET  → return patient record (existing behaviour)
+    PATCH→ update name/age/sex/dob/created_at from request JSON
+    """
+    if request.method == "GET":
+        p = fetch_patient(patient_id)
+        if not p:
+            abort(404, f"Patient {patient_id} not found")
+        return jsonify(p)
+
+    # PATCH
+    data    = request.json or {}
+    allowed = {"name", "age", "sex", "dob", "created_at"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    try:
+        from database import get_conn
+        with get_conn() as conn:
+            sets  = ", ".join(f"{k}=?" for k in updates)
+            vals  = list(updates.values()) + [patient_id]
+            conn.execute(f"UPDATE patients SET {sets} WHERE id=?", vals)
+            conn.commit()
+        updated = fetch_patient(patient_id)
+        log.info(f"Patient {patient_id} updated: {updates}")
+        return jsonify(updated)
+    except Exception as e:
+        log.error(f"PATCH /api/patients/{patient_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── POST /api/import  (EDF file upload → parser.py → H5) ─────────────────────
+
+@app.post("/api/import")
+def import_edf():
+    """
+    Accept an EDF file upload and ingest it for a patient.
+    multipart/form-data:
+        file        : the .edf file
+        patient_id  : e.g. "P001"
+    """
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file in request"}), 400
+
+    patient_id = request.form.get("patient_id", "UNKNOWN")
+    file       = request.files["file"]
+
+    if not file.filename.lower().endswith((".edf", ".edf+")):
+        return jsonify({"success": False, "error": "File must be .edf or .edf+"}), 400
+
+    # Save uploaded file to incoming/ folder
+    incoming_dir = os.path.join(DATA_DIR, "incoming")
+    os.makedirs(incoming_dir, exist_ok=True)
+    safe_name  = f"{patient_id}_{file.filename}"
+    saved_path = os.path.join(incoming_dir, safe_name)
+    file.save(saved_path)
+    log.info(f"EDF uploaded: {saved_path} for patient {patient_id}")
+
+    try:
+        from parser import ingest_edf
+        result = ingest_edf(saved_path, patient_id, data_dir=DATA_DIR)
+    except ImportError:
+        return jsonify({
+            "success": False,
+            "error": "parser.py not found — copy it to backend/ first"
+        }), 500
+    except Exception as e:
+        log.error(f"Ingest failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    if not result["success"]:
+        return jsonify(result), 400
+
+    # Update DB with new H5 file path
+    try:
+        from database import get_conn
+        n_leads = result.get("n_channels", 0)
+        col     = "h5_12lead" if n_leads == 12 else "h5_3lead"
+        # Store relative path from DATA_DIR
+        rel_path = os.path.relpath(result["h5_path"], DATA_DIR)
+        with get_conn() as conn:
+            conn.execute(
+                f"UPDATE patients SET {col}=? WHERE id=?",
+                (rel_path, patient_id)
+            )
+            conn.commit()
+        log.info(f"DB updated: {patient_id}.{col} = {rel_path}")
+    except Exception as e:
+        log.warning(f"DB update after import failed: {e}")
+        result["db_warning"] = str(e)
+
+    # Invalidate H5 cache so next request opens the new file
+    _h5_cache.pop(os.path.normpath(result["h5_path"]), None)
+
+    return jsonify(result), 200
+
 
 # ── Boot ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

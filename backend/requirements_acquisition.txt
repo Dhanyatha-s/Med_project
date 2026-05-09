@@ -1,25 +1,9 @@
-neurokit2
-numpy 
-scipy 
-matplotlib 
-h5py 
-wfdb 
-scikit-learn 
-pandas 
-pyedflib 
-fastapi 
-uvicorn 
-bleak 
-pyusb 
-zeroconf
-reportlab 
-joblib
-flask>=3.0.0
-flask-cors>=4.0.0
-pyedflib
+# New dependencies for data acquisition module
+# Run: pip install -r requirements_acquisition.txt
+
 hdf5plugin    # Blosc+Zstd+Bitshuffle compression for H5 streaming writer
 watchdog      # Folder monitoring for data/incoming/ watcher
 pyserial      # USB serial (CDC) for when firmware uses COM port transfer
 pyedflib      # EDF file reading and writing (already in parser.py)
 requests      # Used by simulate_device.py WiFi test mode
-psutil   
+psutil        # RAM monitoring in test scripts
