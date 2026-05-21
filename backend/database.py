@@ -1,13 +1,14 @@
 """
-database.py
-Initialises SQLite patient records and provides query helpers.
-"""
-
-"""
 database.py  —  SQLite patient store
+Fully automated: any new patient arriving via WiFi/BT/USB
+is automatically registered. No manual DB commands needed.
 """
 
-import os, glob, logging, sqlite3
+import os
+import glob
+import logging
+import sqlite3
+import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def initialize_database():
                 id         TEXT PRIMARY KEY,
                 name       TEXT NOT NULL,
                 age        INTEGER DEFAULT 0,
-                sex        TEXT    DEFAULT 'M',
+                sex        TEXT    DEFAULT 'Unknown',
                 dob        TEXT    DEFAULT '',
                 created_at TEXT    DEFAULT '',
                 h5_3lead   TEXT    DEFAULT '',
@@ -46,7 +47,7 @@ def initialize_database():
             "ecg_48hr_3leads_converted.h5",
             "ecg_48hr_12leads_converted.h5",
         ))
-        # P002 — 3-lead patient (second patient to test dynamic layout)
+        # P002 — 3-lead patient
         conn.execute("""
             INSERT OR IGNORE INTO patients
               (id, name, age, sex, dob, created_at, h5_3lead, h5_12lead)
@@ -60,40 +61,93 @@ def initialize_database():
     log.info("Database ready.")
 
 
-def upsert_patient_files(data_dir: str, h5_paths: list):
-    """
-    Scan h5_paths, figure out 3-lead vs 12-lead by shape[1],
-    and update P001 DB record. Does NOT overwrite P002's h5_3lead
-    since P002 is intentionally 3-lead only.
-    """
-    import h5py
-    mapping = {"h5_3lead": "", "h5_12lead": ""}
+# ── AUTO-REGISTER any new patient ────────────────────────────────────────────
 
-    for path in h5_paths:
-        fname = os.path.basename(path)
-        try:
-            with h5py.File(path, "r") as f:
-                n = int(f["ecg"].shape[1])
-            if n == 3:
-                mapping["h5_3lead"] = fname
-                log.info(f"  3-lead  file : {fname}")
-            elif n == 12:
-                mapping["h5_12lead"] = fname
-                log.info(f"  12-lead file : {fname}")
-        except Exception as e:
-            log.warning(f"  Skipping {fname}: {e}")
+def auto_register_patient(patient_id: str, name: str = None,
+                           h5_rel_path: str = None, n_leads: int = 0):
+    """
+    Called automatically after every WiFi / BT / USB / SD ingest.
+    - Inserts the patient if they don't exist yet (INSERT OR IGNORE)
+    - Updates the correct H5 column (h5_12lead or h5_3lead)
+    - Never overwrites existing demographic data
+    """
+    display_name = name if name and name not in ("TestPatient", "Unknown", "") \
+                        else patient_id
+    created_at   = datetime.datetime.now().strftime("%Y-%m-%d")
+    col          = "h5_12lead" if n_leads == 12 else "h5_3lead"
 
     with get_conn() as conn:
-        # Update P001 with both files
-        if mapping["h5_12lead"]:
-            conn.execute(
-                "UPDATE patients SET h5_12lead=?, h5_3lead=? WHERE id='P001'",
-                (mapping["h5_12lead"], mapping["h5_3lead"])
-            )
-        # P002 keeps only the 3-lead file (already seeded above)
-        conn.commit()
-    log.info(f"DB updated → P001: 12L={mapping['h5_12lead']} 3L={mapping['h5_3lead']}")
+        # Step 1: Insert if new — never fails if already exists
+        conn.execute("""
+            INSERT OR IGNORE INTO patients
+                (id, name, age, sex, dob, created_at, h5_3lead, h5_12lead)
+            VALUES (?, ?, 0, 'Unknown', '', ?, '', '')
+        """, (patient_id, display_name, created_at))
 
+        # Step 2: Update H5 path (always safe — patient now guaranteed to exist)
+        if h5_rel_path:
+            conn.execute(
+                f"UPDATE patients SET {col}=? WHERE id=?",
+                (h5_rel_path, patient_id)
+            )
+
+        conn.commit()
+
+    log.info(f"[DB] Auto-registered: {patient_id} | {col}={h5_rel_path}")
+
+
+# ── SCAN & REGISTER all H5 files on disk ─────────────────────────────────────
+
+def upsert_patient_files(data_dir: str, h5_paths: list):
+    """
+    Called at api.py boot. Scans all H5 files and registers every
+    patient found on disk into the DB automatically.
+    Works for P001, P002, P003 ... any patient ID.
+    """
+    import h5py
+    import re
+
+    for path in h5_paths:
+        rel   = os.path.relpath(path, data_dir)
+        fname = os.path.basename(path)
+
+        # Try to extract patient ID from folder structure: patients/PXXX/ecg.h5
+        parts     = rel.replace("\\", "/").split("/")
+        patient_id = None
+        for part in parts:
+            if re.match(r"^P\d+$", part, re.IGNORECASE):
+                patient_id = part.upper()
+                break
+
+        # Fallback: try filename e.g. P003_ecg.h5
+        if not patient_id:
+            m = re.match(r"^(P\d+)", fname.upper())
+            if m:
+                patient_id = m.group(1)
+
+        if not patient_id:
+            log.warning(f"  Cannot determine patient ID for {rel} — skipping")
+            continue
+
+        try:
+            with h5py.File(path, "r") as f:
+                n_leads = int(f["ecg"].shape[1])
+                name    = str(f.attrs.get("patient_name", patient_id))
+        except Exception as e:
+            log.warning(f"  Cannot read {rel}: {e}")
+            continue
+
+        auto_register_patient(
+            patient_id  = patient_id,
+            name        = name,
+            h5_rel_path = rel,
+            n_leads     = n_leads,
+        )
+
+    log.info("[DB] Boot scan complete — all patients registered.")
+
+
+# ── STANDARD QUERIES ──────────────────────────────────────────────────────────
 
 def fetch_all_patients():
     with get_conn() as conn:
