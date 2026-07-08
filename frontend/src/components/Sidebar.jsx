@@ -1,19 +1,22 @@
 /**
  * Sidebar.jsx
  * Left panel: patient list from API, recording metadata, live interval bars.
+ * Theme-aware: all colors derived from getEcgTheme(tokens, theme).
  */
 
 import React from "react";
 import { computeIntervals } from "../utils/ecgIntervals";
+import { useApp }       from "../context/AppContext";
+import { getEcgTheme }  from "../styles/themeTokens";
 
 const MONO = { fontFamily: "'Share Tech Mono', monospace" };
 
 // ── Tiny sub-components ───────────────────────────────────────────────────────
 
-function SectionLabel({ text }) {
+function SectionLabel({ text, T }) {
   return (
     <div style={{
-      ...MONO, fontSize: 9, color: "#333",
+      ...MONO, fontSize: 9, color: T.grey6,
       letterSpacing: "0.15em", textTransform: "uppercase",
       padding: "10px 14px 5px",
     }}>
@@ -22,25 +25,25 @@ function SectionLabel({ text }) {
   );
 }
 
-function StatRow({ label, value, accent }) {
+function StatRow({ label, value, accent, T }) {
   return (
     <div style={{
       display: "flex", justifyContent: "space-between",
       alignItems: "center",
       padding: "4px 14px",
-      borderBottom: "1px solid #111",
+      borderBottom: `1px solid ${T.border0}`,
     }}>
-      <span style={{ fontSize: 11, color: "#444" }}>{label}</span>
-      <span style={{ ...MONO, fontSize: 11, color: accent || "#666" }}>{value}</span>
+      <span style={{ fontSize: 11, color: T.grey4 }}>{label}</span>
+      <span style={{ ...MONO, fontSize: 11, color: accent || T.grey2 }}>{value}</span>
     </div>
   );
 }
 
-function MiniBar({ value, max, color }) {
+function MiniBar({ value, max, color, T }) {
   const pct = Math.min(100, (value / max) * 100).toFixed(1);
   return (
     <div style={{
-      height: 3, background: "#181818", borderRadius: 2, overflow: "hidden",
+      height: 3, background: T.grey10, borderRadius: 2, overflow: "hidden",
     }}>
       <div style={{
         width: `${pct}%`, height: "100%",
@@ -51,22 +54,22 @@ function MiniBar({ value, max, color }) {
   );
 }
 
-function IntervalRow({ label, value, unit, barValue, barMax, color }) {
+function IntervalRow({ label, value, unit, barValue, barMax, color, T }) {
   return (
     <div style={{ padding: "5px 14px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-        <span style={{ fontSize: 11, color: "#3a3a3a" }}>{label}</span>
+        <span style={{ fontSize: 11, color: T.grey5 }}>{label}</span>
         <span style={{ ...MONO, fontSize: 11, color }}>
-          {value}<span style={{ color: "#2a2a2a", marginLeft: 2 }}>{unit}</span>
+          {value}<span style={{ color: T.grey7, marginLeft: 2 }}>{unit}</span>
         </span>
       </div>
-      <MiniBar value={barValue} max={barMax} color={color} />
+      <MiniBar T={T} value={barValue} max={barMax} color={color} />
     </div>
   );
 }
 
-function Divider() {
-  return <div style={{ height: 1, background: "#111", margin: "6px 0" }} />;
+function Divider({ T }) {
+  return <div style={{ height: 1, background: T.border0, margin: "6px 0" }} />;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -81,6 +84,8 @@ export default function Sidebar({
   loading,
   apiError,
 }) {
+  const { tokens, theme } = useApp();
+  const T = getEcgTheme(tokens, theme);
   const iv = computeIntervals(hr);
 
   const fmtTime = (s) => {
@@ -94,8 +99,8 @@ export default function Sidebar({
       width: 200,
       flexShrink: 0,
       height: "100%",
-      background: "#090909",
-      borderRight: "1px solid #161616",
+      background: T.surface0,
+      borderRight: `1px solid ${T.border1}`,
       display: "flex",
       flexDirection: "column",
       overflowY: "auto",
@@ -104,28 +109,28 @@ export default function Sidebar({
       {/* ── Logo ─────────────────────────────────────────────────────────── */}
       <div style={{
         padding: "14px 14px 12px",
-        borderBottom: "1px solid #141414",
+        borderBottom: `1px solid ${T.border0}`,
       }}>
-        <div style={{ ...MONO, fontSize: 13, color: "#00d68f", letterSpacing: "0.1em" }}>
+        <div style={{ ...MONO, fontSize: 13, color: T.accentSoft, letterSpacing: "0.1em" }}>
           HOLTER ECG
         </div>
-        <div style={{ fontSize: 10, color: "#282828", marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: T.grey7, marginTop: 2 }}>
           48-hour Monitor System
         </div>
       </div>
 
       {/* ── Patients ─────────────────────────────────────────────────────── */}
-      <SectionLabel text="Patients" />
+      <SectionLabel T={T} text="Patients" />
 
       {apiError && (
         <div style={{
           margin: "0 10px 6px",
           padding: "6px 8px",
-          background: "rgba(255,80,60,0.06)",
-          border: "1px dashed rgba(255,80,60,0.2)",
+          background: T.withAlpha(T.red, 0.06),
+          border: `1px dashed ${T.withAlpha(T.red, 0.2)}`,
           borderRadius: 4,
           fontSize: 10,
-          color: "#ff5040",
+          color: T.red,
           ...MONO,
         }}>
           API unavailable
@@ -133,7 +138,7 @@ export default function Sidebar({
       )}
 
       {loading && (
-        <div style={{ fontSize: 10, color: "#333", padding: "4px 14px", ...MONO }}>
+        <div style={{ fontSize: 10, color: T.grey6, padding: "4px 14px", ...MONO }}>
           Loading…
         </div>
       )}
@@ -149,21 +154,21 @@ export default function Sidebar({
                 width: "100%", textAlign: "left",
                 padding: "8px 8px",
                 marginBottom: 2,
-                background: active ? "rgba(0,214,143,0.07)" : "transparent",
-                border: active ? "1px solid rgba(0,214,143,0.2)" : "1px solid transparent",
+                background: active ? T.withAlpha(T.accentSoft, 0.07) : "transparent",
+                border: active ? `1px solid ${T.withAlpha(T.accentSoft, 0.2)}` : "1px solid transparent",
                 borderRadius: 5,
                 cursor: "pointer",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: active ? "#e0e0e0" : "#555", fontWeight: 500 }}>
+                <span style={{ fontSize: 12, color: active ? T.textPrimary : T.grey3, fontWeight: 500 }}>
                   {p.name}
                 </span>
-                <span style={{ ...MONO, fontSize: 9, color: "#2a2a2a" }}>{p.id}</span>
+                <span style={{ ...MONO, fontSize: 9, color: T.grey7 }}>{p.id}</span>
               </div>
               <div style={{
                 ...MONO, fontSize: 10, marginTop: 2,
-                color: active ? "#00d68f" : "#2e2e2e",
+                color: active ? T.accentSoft : T.grey8,
               }}>
                 Age {p.age} · Sinus
               </div>
@@ -172,60 +177,65 @@ export default function Sidebar({
         })}
       </div>
 
-      <Divider />
+      <Divider T={T} />
 
       {/* ── Recording stats ──────────────────────────────────────────────── */}
-      <SectionLabel text="Recording" />
-      <StatRow label="Duration"    value="48:00 hr" />
-      <StatRow label="Elapsed"     value={fmtTime(timeOffset)} accent="#555" />
-      <StatRow label="Sample rate" value="250 Hz" />
-      <StatRow label="Leads"       value="3 / 12" />
-      <StatRow label="Resolution"  value="16-bit" />
-      <StatRow label="Progress"
+      <SectionLabel T={T} text="Recording" />
+      <StatRow T={T} label="Duration"    value="48:00 hr" />
+      <StatRow T={T} label="Elapsed"     value={fmtTime(timeOffset)} accent={T.grey3} />
+      <StatRow T={T} label="Sample rate" value="250 Hz" />
+      <StatRow T={T} label="Leads"       value="3 / 12" />
+      <StatRow T={T} label="Resolution"  value="16-bit" />
+      <StatRow T={T} label="Progress"
         value={`${((timeOffset / totalDuration) * 100).toFixed(1)}%`}
-        accent="#00d68f"
+        accent={T.accentSoft}
       />
 
-      <Divider />
+      <Divider T={T} />
 
       {/* ── Interval bars ────────────────────────────────────────────────── */}
-      <SectionLabel text="Intervals" />
+      <SectionLabel T={T} text="Intervals" />
 
       <IntervalRow
+        T={T}
         label="Heart Rate"
         value={hr}       unit="bpm"
         barValue={hr}    barMax={200}
-        color="#ff6040"
+        color={T.red}
       />
       <IntervalRow
+        T={T}
         label="PR"
         value={(iv.pr  * 1000).toFixed(0)} unit="ms"
         barValue={iv.pr  * 1000}           barMax={300}
-        color="#38bdf8"
+        color={T.cyan}
       />
       <IntervalRow
+        T={T}
         label="QRS"
         value={(iv.qrs * 1000).toFixed(0)} unit="ms"
         barValue={iv.qrs * 1000}           barMax={150}
-        color="#00d68f"
+        color={T.accentSoft}
       />
       <IntervalRow
+        T={T}
         label="QT"
         value={(iv.qt  * 1000).toFixed(0)} unit="ms"
         barValue={iv.qt  * 1000}           barMax={500}
-        color="#a78bfa"
+        color={T.purple}
       />
       <IntervalRow
+        T={T}
         label="QTc"
         value={(iv.qtc * 1000).toFixed(0)} unit="ms"
         barValue={iv.qtc * 1000}           barMax={500}
-        color={iv.qtc * 1000 > 450 ? "#faad14" : "#a78bfa"}
+        color={iv.qtc * 1000 > 450 ? T.amber : T.purple}
       />
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <div style={{ marginTop: "auto", padding: "10px 14px", borderTop: "1px solid #111" }}>
-        <div style={{ ...MONO, fontSize: 9, color: "#222" }}>LCC 00000-0000</div>
-        <div style={{ fontSize: 9, color: "#1e1e1e", marginTop: 2 }}>v1.0 · 2026</div>
+      <div style={{ marginTop: "auto", padding: "10px 14px", borderTop: `1px solid ${T.border0}` }}>
+        <div style={{ ...MONO, fontSize: 9, color: T.grey8 }}>LCC 00000-0000</div>
+        <div style={{ fontSize: 9, color: T.grey9, marginTop: 2 }}>v1.0 · 2026</div>
       </div>
     </div>
   );

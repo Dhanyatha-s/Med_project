@@ -11,7 +11,8 @@ Usage:
   python simulate_device.py --mode bt     --edf data/test.edf
   python simulate_device.py --generate    --patient P001 --duration 300
 """
-
+import h5py, pyedflib, hdf5plugin, json
+import numpy as np
 import os, sys, time, argparse, shutil, threading, logging
 import requests
 
@@ -300,8 +301,7 @@ def generate_test_edf(patient_id: str, duration_sec: int = 300, sr: int = 250):
 
 
 def _h5_to_edf(h5_path, out_path, patient_id, duration_sec):
-    import h5py, pyedflib, hdf5plugin, json
-    import numpy as np
+    
 
     with h5py.File(h5_path, "r") as f:
         sr        = int(f.attrs.get("sampling_rate", 250))

@@ -18,14 +18,14 @@ Usage:
 
 The output .h5 file goes into:  data/patients/<patient_id>/ecg.h5
 """
-
+import h5py
+import pyedflib
 import os
 import sys
 import json
 import hashlib
 import numpy as np
-import h5py
-import pyedflib
+
 
 
 # ── EDF METADATA ────────────────────────────────────────────────────────────

@@ -73,6 +73,7 @@ import time
 import logging
 import argparse
 import threading
+import serial
 
 log = logging.getLogger(__name__)
 
@@ -240,7 +241,7 @@ def _listener_loop(
     Main loop: detect port → open serial → handshake → feed IngestSession.
     Reconnects automatically if connection drops.
     """
-    import serial
+    
 
     while not _stop_event.is_set():
         # ── Port resolution ───────────────────────────────────────────────────
