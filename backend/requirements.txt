@@ -1,5 +1,12 @@
-flask>=3.0.0
-flask-cors>=4.0.0
-h5py>=3.10.0
-numpy>=1.26.0
-pyedflib
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+pydantic>=2.10,<3
+pydantic-settings>=2.7,<3
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+alembic>=1.16,<2
+h5py>=3.10,<4
+numpy>=1.26,<3
+reportlab>=4.2,<5
+pytest>=8.3,<9
+httpx>=0.28,<1
