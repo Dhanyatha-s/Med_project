@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,11 +10,12 @@ from app.db import Base
 
 class Patient(Base):
     __tablename__ = "patients"
+    __table_args__ = (UniqueConstraint("patient_number", name="uq_patients_patient_number"),)
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    patient_number: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    patient_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    date_of_birth: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
     sex: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -43,7 +44,7 @@ class Recording(Base):
     raw_object_key: Mapped[str | None] = mapped_column(Text)
     processed_object_key: Mapped[str | None] = mapped_column(Text)
     checksum_sha256: Mapped[str | None] = mapped_column(String(64))
-    metadata: Mapped[dict | None] = mapped_column(JSONB)
+    recording_metadata: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     patient: Mapped[Patient] = relationship(back_populates="recordings")
@@ -80,8 +81,3 @@ class Report(Base):
     signed_by: Mapped[str | None] = mapped_column(String(200))
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-# Prevent accidental duplicate patient identifiers even if the explicit unique
-# constraint/index is changed later by a migration.
-Patient.__table_args__ = (UniqueConstraint("patient_number", name="uq_patients_patient_number"),)
