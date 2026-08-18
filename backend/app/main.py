@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import annotations, health, patients
+from app.routers import annotations, health, patients, recordings
 
 settings = get_settings()
 
@@ -12,11 +12,14 @@ app = FastAPI(
     description="On-premise Holter ECG application API. Acquisition is intentionally outside this Phase 1 refactor.",
 )
 
-# Electron/browser development needs local API access. In production this list
-# should be narrowed to the actual Electron origin/server configuration.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,6 +28,7 @@ app.add_middleware(
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(patients.router, prefix=settings.api_prefix)
 app.include_router(annotations.router, prefix=settings.api_prefix)
+app.include_router(recordings.router, prefix=settings.api_prefix)
 
 
 @app.get("/", tags=["system"])
