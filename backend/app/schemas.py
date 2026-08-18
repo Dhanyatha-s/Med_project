@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class PatientCreate(BaseModel):
@@ -22,6 +22,14 @@ class PatientRead(PatientCreate):
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def age(self) -> int | None:
+        if self.date_of_birth is None:
+            return None
+        today = date.today()
+        return today.year - self.date_of_birth.year - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
 
 
 class RecordingRead(BaseModel):
