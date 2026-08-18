@@ -1,10 +1,9 @@
 /**
- * ecgApi.js
- * Thin wrappers around the Flask REST API.
- * All functions return plain JS objects / arrays.
+ * API client for the FastAPI backend.
+ * The Electron shell will continue to use HTTP against the local FastAPI process.
  */
 
-const BASE = process.env.REACT_APP_API_URL || "";  // "" → uses CRA proxy → localhost:5000
+const BASE = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`);
@@ -12,39 +11,56 @@ async function get(path) {
   return res.json();
 }
 
-/** Fetch all patients from SQLite */
 export async function getPatients() {
-  return get("/api/patients");
+  return get("/api/v1/patients");
 }
 
-/** Fetch a single patient record */
 export async function getPatient(patientId) {
-  return get(`/api/patients/${patientId}`);
+  return get(`/api/v1/patients/${patientId}`);
+}
+
+export async function getRecordings(patientId) {
+  return get(`/api/v1/patients/${patientId}/recordings`);
 }
 
 /**
- * Fetch all leads for a time window in one request.
- * Returns { leads: { II: number[], ... }, sr: 250, start, duration }
- *
- * @param {string} patientId
- * @param {3|12}   nLeads
- * @param {number} startSec
- * @param {number} durationSec   max 30
+ * Fetch the latest available recording for a patient.
+ * The old nLeads parameter is retained for UI compatibility; lead count is
+ * now determined by recording metadata and may be anywhere from 1 to 12.
  */
-export async function getAllLeads(patientId, nLeads, startSec, durationSec = 10) {
-  const url =
-    `/api/ecg/${patientId}/${nLeads}/all` +
-    `?start=${startSec.toFixed(2)}&duration=${durationSec}`;
-  return get(url);
+export async function getAllLeads(patientId, _nLeads, startSec, durationSec = 10) {
+  const recordings = await getRecordings(patientId);
+  if (!recordings.length) throw new Error("No ECG recording is registered for this patient");
+
+  const recording = recordings[0];
+  const data = await get(
+    `/api/v1/recordings/${recording.id}/ecg?start_sec=${startSec.toFixed(2)}&duration_sec=${durationSec}`,
+  );
+
+  const leads = {};
+  data.lead_names.forEach((name, index) => {
+    leads[name] = data.samples.map((row) => row[index]);
+  });
+
+  return {
+    leads,
+    sr: data.sampling_rate_hz,
+    start: data.start_sec,
+    duration: data.duration_sec,
+    leadCount: data.lead_count,
+    leadNames: data.lead_names,
+    recordingId: data.recording_id,
+  };
 }
 
-/**
- * Fetch a single lead window.
- * Returns { lead, sr, start, samples: number[] }
- */
 export async function getLead(patientId, nLeads, leadName, startSec, durationSec = 10) {
-  const url =
-    `/api/ecg/${patientId}/${nLeads}` +
-    `?lead=${leadName}&start=${startSec.toFixed(2)}&duration=${durationSec}`;
-  return get(url);
+  const all = await getAllLeads(patientId, nLeads, startSec, durationSec);
+  if (!all.leads[leadName]) throw new Error(`Lead not found: ${leadName}`);
+  return {
+    lead: leadName,
+    sr: all.sr,
+    start: all.start,
+    samples: all.leads[leadName],
+    duration: all.duration,
+  };
 }
