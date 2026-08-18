@@ -1,28 +1,5 @@
-neurokit2
-numpy 
-scipy 
-matplotlib 
-h5py 
-wfdb 
-scikit-learn 
-pandas 
-pyedflib 
-fastapi 
-uvicorn 
-bleak 
-pyusb 
-zeroconf
-reportlab 
-joblib
-flask>=3.0.0
-flask-cors>=4.0.0
-pyedflib
-hdf5plugin    # Blosc+Zstd+Bitshuffle compression for H5 streaming writer
-watchdog      # Folder monitoring for data/incoming/ watcher
-pyserial      # USB serial (CDC) for when firmware uses COM port transfer
-pyedflib      # EDF file reading and writing (already in parser.py)
-requests      # Used by simulate_device.py WiFi test mode
-psutil   
-pyserial
-lucide-react
-h5py
+# Phase 1 application dependencies
+-r backend/requirements.txt
+
+# Device acquisition dependencies remain isolated until the firmware/data contract is finalized.
+# -r backend/requirements_acquisition.txt
